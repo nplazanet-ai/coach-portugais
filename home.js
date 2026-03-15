@@ -2,8 +2,8 @@
 //  modules/home/home.js
 // ─────────────────────────────────────────────
 
-import State from '../../core/state.js';
-import { getUnit } from '../../shared/data.js';
+import State from './state.js';
+import { getUnit } from './data.js';
 
 const HomeModule = {
 

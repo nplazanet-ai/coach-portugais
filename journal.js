@@ -2,9 +2,9 @@
 //  modules/journal/journal.js
 // ─────────────────────────────────────────────
 
-import State   from '../../core/state.js';
-import Storage from '../../core/storage.js';
-import { UNITS, getUnit } from '../../shared/data.js';
+import State   from './state.js';
+import Storage from './storage.js';
+import { UNITS, getUnit } from './data.js';
 
 // ── État local du formulaire ──────────────────
 let _form = _emptyForm();

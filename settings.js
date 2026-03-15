@@ -2,8 +2,8 @@
 //  modules/settings/settings.js
 // ─────────────────────────────────────────────
 
-import State   from '../../core/state.js';
-import Storage from '../../core/storage.js';
+import State   from './state.js';
+import Storage from './storage.js';
 
 const SettingsModule = {
 

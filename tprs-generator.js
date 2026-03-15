@@ -4,7 +4,7 @@
 //  à partir du dernier journal entry, via Claude API.
 // ─────────────────────────────────────────────
 
-import State from '../../core/state.js';
+import State from './state.js';
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 const MODEL         = 'claude-opus-4-6';

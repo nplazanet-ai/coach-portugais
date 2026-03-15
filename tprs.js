@@ -9,8 +9,8 @@
 //    5. Analyse prononciation (Claude, transcript SpeechRecognition)
 // ─────────────────────────────────────────────
 
-import State         from '../../core/state.js';
-import Storage       from '../../core/storage.js';
+import State         from './state.js';
+import Storage       from './storage.js';
 import TprsGenerator from './tprs-generator.js';
 import TprsRecorder  from './tprs-recorder.js';
 import TprsAnalyser  from './tprs-analyser.js';

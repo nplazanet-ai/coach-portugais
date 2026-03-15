@@ -5,7 +5,7 @@
 //  cible et retourne un feedback structuré via Claude.
 // ─────────────────────────────────────────────
 
-import State from '../../core/state.js';
+import State from './state.js';
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 const MODEL         = 'claude-opus-4-6';
