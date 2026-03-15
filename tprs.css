@@ -241,6 +241,256 @@
   border: 1px solid rgba(196,92,50,0.25);
 }
 
+/* ── RETELLING CARD ── */
+.tprs-retell-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+}
+.tprs-retell-header { margin-bottom: 12px; }
+.tprs-retell-label {
+  font-size: 10px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.8px; margin-bottom: 4px;
+}
+.tprs-retell-title {
+  font-family: var(--font-display);
+  font-size: 18px; font-weight: 700; color: var(--ink);
+}
+
+/* ── BOUTON ENREGISTREMENT ── */
+.tprs-rec-btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; padding: 16px;
+  background: var(--terra); color: white;
+  border: none; border-radius: var(--r-sm);
+  font-family: var(--font-body); font-size: 14px; font-weight: 700;
+  cursor: pointer; margin-top: 14px;
+  transition: filter 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tprs-rec-btn:active { transform: scale(0.97); }
+.tprs-rec-icon { font-size: 20px; line-height: 1; }
+
+/* ── CARTE ENREGISTREMENT EN COURS ── */
+.tprs-recording-card {
+  background: white;
+  border: 2px solid var(--border);
+  border-radius: var(--r);
+  padding: 20px 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+  text-align: center;
+  transition: border-color 0.3s;
+}
+.tprs-recording-card.is-recording {
+  border-color: var(--terra);
+  box-shadow: 0 0 0 4px rgba(196,92,50,0.12);
+}
+.tprs-rec-status {
+  font-size: 12px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.6px; margin-bottom: 10px;
+}
+.is-recording .tprs-rec-status { color: var(--terra); }
+
+.tprs-rec-timer {
+  font-family: var(--font-display);
+  font-size: 42px; font-weight: 700;
+  color: var(--ink); margin-bottom: 12px;
+  letter-spacing: 2px;
+}
+.is-recording .tprs-rec-timer { color: var(--terra); }
+
+/* Animation pulsation sur le timer quand actif */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+.is-recording .tprs-rec-timer { animation: pulse 1.4s ease infinite; }
+
+.tprs-rec-transcript {
+  min-height: 48px;
+  background: var(--cream2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  font-size: 13px; line-height: 1.5;
+  color: var(--ink2); text-align: left;
+}
+.tprs-transcript-placeholder { color: var(--muted); font-style: italic; }
+.tprs-interim { color: var(--muted); }
+
+.tprs-rec-stop {
+  background: rgba(184,50,50,0.1);
+  color: var(--red);
+  border: 1.5px solid rgba(184,50,50,0.3);
+}
+.tprs-rec-stop:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── REVIEW CARD ── */
+.tprs-review-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+}
+.tprs-review-header { margin-bottom: 12px; }
+.tprs-review-label {
+  font-size: 10px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.8px; margin-bottom: 4px;
+}
+.tprs-review-title {
+  font-family: var(--font-display);
+  font-size: 18px; font-weight: 700; color: var(--ink);
+}
+
+.tprs-audio-player {
+  width: 100%;
+  height: 44px;
+  border-radius: var(--r-sm);
+  margin-bottom: 12px;
+  accent-color: var(--terra);
+}
+
+.tprs-transcript-box {
+  background: var(--cream2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+}
+.tprs-transcript-label {
+  font-size: 10px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.6px; margin-bottom: 5px;
+}
+.tprs-transcript-text {
+  font-size: 13px; line-height: 1.5; color: var(--ink2);
+}
+.tprs-transcript-text.muted { color: var(--muted); font-style: italic; }
+
+/* ── CHARGEMENT ANALYSE ── */
+.tprs-analysing {
+  display: flex; flex-direction: column;
+  align-items: center; gap: 14px;
+  padding: 40px 16px;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.tprs-analysing-spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--terra);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.tprs-analysing-text {
+  font-size: 14px; color: var(--muted); font-weight: 500;
+}
+
+/* ── CARTE D'ANALYSE ── */
+.tprs-analysis-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 20px 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+}
+
+/* Score */
+.tprs-score-row {
+  display: flex; align-items: center; gap: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.tprs-score-ring {
+  flex-shrink: 0;
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  border: 4px solid currentColor;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.tprs-score-ring.score-great { color: var(--olive); }
+.tprs-score-ring.score-ok    { color: var(--gold); }
+.tprs-score-ring.score-low   { color: var(--terra); }
+.tprs-score-val {
+  font-family: var(--font-display);
+  font-size: 26px; font-weight: 700; line-height: 1;
+  color: inherit;
+}
+.tprs-score-unit {
+  font-size: 10px; color: var(--muted); font-weight: 600;
+}
+.tprs-score-summary {
+  font-size: 13px; color: var(--ink2); line-height: 1.5;
+  flex: 1;
+}
+
+/* Sections feedback */
+.tprs-feedback-section { margin-bottom: 14px; }
+.tprs-feedback-label {
+  font-size: 10px; font-weight: 600;
+  color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.8px; margin-bottom: 8px;
+}
+.tprs-feedback-item {
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  font-size: 13px; line-height: 1.4;
+}
+.tprs-feedback-item.positive {
+  background: var(--olive-l);
+  color: var(--olive);
+  border: 1px solid rgba(92,122,78,0.2);
+  font-weight: 500;
+}
+.tprs-feedback-item.error {
+  background: var(--cream2);
+  border: 1px solid var(--border);
+}
+.tprs-error-header {
+  display: flex; align-items: center; gap: 7px;
+  margin-bottom: 5px;
+}
+.tprs-error-badge {
+  font-size: 10px; font-weight: 700;
+  padding: 2px 7px; border-radius: 20px;
+  background: var(--terra-l); color: var(--terra);
+  border: 1px solid rgba(196,92,50,0.2);
+  flex-shrink: 0;
+}
+.tprs-error-words {
+  font-size: 13px; color: var(--ink2);
+}
+.tprs-error-words s { color: var(--muted); text-decoration-color: var(--terra); }
+.tprs-error-tip {
+  font-size: 12px; color: var(--ink2); line-height: 1.4;
+}
+.tprs-tip-item {
+  font-size: 12px; color: var(--ink2); line-height: 1.5;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.tprs-tip-item:last-child { border-bottom: none; }
+
+.tprs-analysis-actions {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
 /* ── FADE-UP ANIMATION ── */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(10px); }
