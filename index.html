@@ -9,11 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Coach PT">
   <title>Mon Coach Portugais</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="shared/styles.css">
-  <link rel="stylesheet" href="modules/home/home.css">
-  <link rel="stylesheet" href="modules/journal/journal.css">
-  <link rel="stylesheet" href="modules/progress/progress.css">
-  <link rel="stylesheet" href="modules/settings/settings.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="tprs.css">
+  <link rel="stylesheet" href="transport.css">
 </head>
 <body>
 
@@ -50,15 +48,15 @@
           <div class="qc-title">Progression</div>
           <div class="qc-sub">Voir le bilan</div>
         </div>
-        <div class="quick-card disabled">
+        <div class="quick-card" onclick="navigate('tprs')">
           <span class="qc-icon">🎙️</span>
           <div class="qc-title">Oral TPRS</div>
-          <div class="qc-sub">Étape 3</div>
+          <div class="qc-sub">Histoire IA</div>
         </div>
-        <div class="quick-card disabled">
+        <div class="quick-card" onclick="openTransport()">
           <span class="qc-icon">🚇</span>
           <div class="qc-title">Mode transport</div>
-          <div class="qc-sub">Étape 2</div>
+          <div class="qc-sub">Flashcards</div>
         </div>
       </div>
       <div id="home-unit-progress" class="fade-up delay-4"></div>
@@ -81,10 +79,44 @@
       <div id="progress-units"></div>
     </section>
 
+    <!-- TPRS -->
+    <section class="page" id="page-tprs">
+      <div class="screen-title">Oral <em>TPRS</em></div>
+      <div class="screen-sub">Histoire générée sur ton dernier cours</div>
+      <div id="tprs-content"></div>
+    </section>
+
     <!-- RÉGLAGES -->
     <section class="page" id="page-settings">
       <div class="screen-title"><em>Réglages</em></div>
       <div class="screen-sub">Configuration de l'application.</div>
+
+      <div class="settings-group">
+        <div class="sg-label">Intelligence Artificielle</div>
+        <div class="setting-row">
+          <div class="setting-left">
+            <span class="setting-icon">🤖</span>
+            <div>
+              <div class="setting-name">
+                Clé API Claude
+                <span id="api-key-badge" class="api-key-badge missing">Non configurée</span>
+              </div>
+              <div class="setting-desc">Pour la génération d'histoires TPRS</div>
+            </div>
+          </div>
+        </div>
+        <div style="padding: 0 14px 14px">
+          <div class="api-key-field">
+            <input type="password" class="form-input" id="api-key-input"
+              placeholder="sk-ant-api03-…"
+              autocomplete="off" autocorrect="off" spellcheck="false">
+            <button class="api-key-eye" id="api-key-eye" onclick="toggleApiKey()">👁</button>
+          </div>
+          <button class="btn btn-secondary" style="margin-top:8px;font-size:12px;padding:9px 14px" onclick="saveApiKey()">
+            Enregistrer la clé
+          </button>
+        </div>
+      </div>
 
       <div class="settings-group">
         <div class="sg-label">Rappels</div>
@@ -147,7 +179,7 @@
         </div>
       </div>
 
-      <div class="version-note">Mon Coach Portugais · v1.0 · Étape 1</div>
+      <div class="version-note">Mon Coach Portugais · v1.1 · Étape 3</div>
     </section>
 
   </main>
@@ -239,11 +271,21 @@
   <button class="btn btn-ghost"   style="margin-top:8px" onclick="closeJournalSheet()">Annuler</button>
 </div>
 
+<!-- ── MODE TRANSPORT ── -->
+<div id="transport-overlay">
+  <div class="tr-header">
+    <div class="tr-header-title">🚇 Transport</div>
+    <button class="tr-close-btn" onclick="closeTransport()">✕</button>
+  </div>
+  <div id="tr-progress" style="display:none"></div>
+  <div class="tr-body" id="tr-body"></div>
+</div>
+
 <!-- ── TOAST ── -->
 <div id="toast"></div>
 
 <!-- ── POINT D'ENTRÉE ── -->
-<script type="module" src="core/app.js"></script>
+<script type="module" src="app.js"></script>
 
 </body>
 </html>
