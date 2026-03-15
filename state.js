@@ -19,6 +19,12 @@ const State = (() => {
     // Préférences
     notifEnabled: false,
     notifTime: '19:00',
+
+    // Intelligence Artificielle
+    claudeApiKey: '',
+
+    // TPRS
+    tprsProgress: {},   // { [entryId]: { generatedAt, score, completedAt } }
   };
 
   let _data = { ...DEFAULTS };

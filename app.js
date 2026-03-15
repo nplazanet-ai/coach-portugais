@@ -14,6 +14,7 @@ import HomeModule     from '../modules/home/home.js';
 import JournalModule  from '../modules/journal/journal.js';
 import ProgressModule from '../modules/progress/progress.js';
 import SettingsModule from '../modules/settings/settings.js';
+import TprsModule     from '../modules/tprs/tprs.js';
 
 // ── REGISTRE DES MODULES ─────────────────────
 // Pour ajouter un module : l'inscrire ici + créer son dossier
@@ -23,6 +24,7 @@ const MODULES = {
   journal:  JournalModule,
   progress: ProgressModule,
   settings: SettingsModule,
+  tprs:     TprsModule,
 };
 
 // ── NAVIGATION ───────────────────────────────
