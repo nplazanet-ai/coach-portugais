@@ -14,7 +14,8 @@ import HomeModule     from './home.js';
 import JournalModule  from './journal.js';
 import ProgressModule from './progress.js';
 import SettingsModule from './settings.js';
-import TprsModule     from './tprs.js';
+import TprsModule      from './tprs.js';
+import TransportModule from './transport.js';
 
 // ── REGISTRE DES MODULES ─────────────────────
 // Pour ajouter un module : l'inscrire ici + créer son dossier
@@ -26,6 +27,9 @@ const MODULES = {
   settings: SettingsModule,
   tprs:     TprsModule,
 };
+
+// Modules hors-navigation (overlay, pas de page dans le nav)
+const EXTRA_MODULES = [TransportModule];
 
 // ── NAVIGATION ───────────────────────────────
 
@@ -138,6 +142,9 @@ function init() {
 
   // 2. Initialiser chaque module
   Object.values(MODULES).forEach(mod => {
+    if (mod.init) mod.init();
+  });
+  EXTRA_MODULES.forEach(mod => {
     if (mod.init) mod.init();
   });
 

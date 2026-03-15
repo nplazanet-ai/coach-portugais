@@ -11,6 +11,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="tprs.css">
+  <link rel="stylesheet" href="transport.css">
 </head>
 <body>
 
@@ -52,10 +53,10 @@
           <div class="qc-title">Oral TPRS</div>
           <div class="qc-sub">Histoire IA</div>
         </div>
-        <div class="quick-card disabled">
+        <div class="quick-card" onclick="openTransport()">
           <span class="qc-icon">🚇</span>
           <div class="qc-title">Mode transport</div>
-          <div class="qc-sub">Étape 2</div>
+          <div class="qc-sub">Flashcards</div>
         </div>
       </div>
       <div id="home-unit-progress" class="fade-up delay-4"></div>
@@ -268,6 +269,16 @@
 
   <button class="btn btn-primary" onclick="saveJournalEntry()">Enregistrer la séance</button>
   <button class="btn btn-ghost"   style="margin-top:8px" onclick="closeJournalSheet()">Annuler</button>
+</div>
+
+<!-- ── MODE TRANSPORT ── -->
+<div id="transport-overlay">
+  <div class="tr-header">
+    <div class="tr-header-title">🚇 Transport</div>
+    <button class="tr-close-btn" onclick="closeTransport()">✕</button>
+  </div>
+  <div id="tr-progress" style="display:none"></div>
+  <div class="tr-body" id="tr-body"></div>
 </div>
 
 <!-- ── TOAST ── -->
