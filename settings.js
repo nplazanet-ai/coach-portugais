@@ -1,5 +1,6 @@
 // ─────────────────────────────────────────────
 //  modules/settings/settings.js
+//  VERSION: 2.0 - OpenAI integration
 // ─────────────────────────────────────────────
 
 import State   from './state.js';

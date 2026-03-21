@@ -4,7 +4,7 @@
 //  assets statiques, réseau-first pour les API.
 // ─────────────────────────────────────────────
 
-const CACHE_NAME = 'coach-pt-v1.2';
+const CACHE_NAME = 'coach-pt-v2';
 
 const STATIC_FILES = [
   './',
@@ -32,12 +32,20 @@ const STATIC_FILES = [
 ];
 
 // ── Installation : mise en cache des assets ──
+// On utilise Promise.allSettled pour ne pas faire échouer l'install
+// si un fichier optionnel (icône, etc.) est absent.
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_FILES);
-    }).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.allSettled(
+        STATIC_FILES.map(url =>
+          cache.add(url).catch(err =>
+            console.warn('[SW] Impossible de mettre en cache :', url, err)
+          )
+        )
+      )
+    ).then(() => self.skipWaiting())
   );
 });
 
