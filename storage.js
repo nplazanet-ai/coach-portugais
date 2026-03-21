@@ -9,7 +9,13 @@
 
 import State from './state.js';
 
-const STORAGE_KEY = 'coach-pt-v1';
+const KEYS = {
+  STATE:      'coach-pt-v1',
+  OPENAI_KEY: 'coach_pt_openai_key',
+};
+
+// Compat : alias utilisé en interne
+const STORAGE_KEY = KEYS.STATE;
 
 const Storage = {
 
@@ -59,6 +65,20 @@ const Storage = {
   clear() {
     localStorage.removeItem(STORAGE_KEY);
     State.reset();
+  },
+
+  // ── CLÉ API OPENAI (stockée séparément) ───
+
+  getOpenAIKey() {
+    return localStorage.getItem(KEYS.OPENAI_KEY) || '';
+  },
+
+  setOpenAIKey(key) {
+    if (key) {
+      localStorage.setItem(KEYS.OPENAI_KEY, key);
+    } else {
+      localStorage.removeItem(KEYS.OPENAI_KEY);
+    }
   },
 
 };

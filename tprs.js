@@ -14,17 +14,32 @@ import Storage       from './storage.js';
 import TprsGenerator from './tprs-generator.js';
 import TprsRecorder  from './tprs-recorder.js';
 import TprsAnalyser  from './tprs-analyser.js';
+import { bindQuestionEvents, finishSession, drillRecord } from './tprs-recording-patch.js';
+import { transcribe, evaluatePronunciation } from './shared/openai-api.js';
 
 // ── État local de la session ──────────────────
-let _story      = null;
-let _quizIndex  = 0;
-let _quizScore  = 0;
-let _utterance  = null;
-// Retelling
-let _recBlob    = null;   // Blob audio du retelling
-let _recTranscript = '';  // Transcription STT
-let _recDuration   = 0;   // Durée en secondes
-let _recObjectURL  = null; // URL temporaire pour le lecteur audio
+let _utterance = null;
+
+// Objet d'état partagé avec les patch functions
+const _state = {
+  story:             null,
+  quizIndex:         0,
+  quizScore:         0,
+  quizTotal:         0,
+  entryId:           null,
+  // Retelling
+  recBlob:           null,
+  recMimeType:       '',
+  recTranscript:     '',
+  recDuration:       0,
+  recObjectURL:      null,
+  // Drill
+  drillIndex:        0,
+  drillSentence:     '',
+  drillScores:       [],
+  pronunciationScore: undefined,
+};
+
 
 // ─────────────────────────────────────────────
 
@@ -42,16 +57,45 @@ const TprsModule = {
     window.trpsCancelRecording= ()    => this.cancelRecording();
     window.tprsAnalyse        = ()    => this.analyse();
     window.tprsRetryRecording = ()    => this._renderRetellingPrompt();
+    window.tprsNextDrill      = ()    => this._nextDrill();
+    window.tprsDrillRecord    = ()    => {
+      const container = document.querySelector('.tprs-drill-card');
+      if (container) drillRecord(container, _state);
+    };
+
+    // ── Listeners patch ──────────────────────
+    document.addEventListener('oral:next-question', (e) => {
+      const { correct } = e.detail;
+      window.toast(correct ? '✓ Correct !' : `✗ Incorrect — c'était ${_state.story?.questions[_state.quizIndex]?.answer ? 'Vrai' : 'Faux'}`, 1800);
+      _state.quizIndex++;
+      setTimeout(() => this.renderQuestionScreen(), 1600);
+    });
+
+    document.addEventListener('oral:finish-session', () => {
+      // Feedback toast de fin de session
+      window.toast('Session enregistrée ✓');
+    });
+
+    document.addEventListener('oral:render', (e) => {
+      if (e.detail?.phase === 'drill') this._renderDrilling();
+    });
   },
 
   onEnter() {
-    _story         = null;
-    _quizIndex     = 0;
-    _quizScore     = 0;
-    _recBlob       = null;
-    _recTranscript = '';
-    _recDuration   = 0;
-    if (_recObjectURL) { URL.revokeObjectURL(_recObjectURL); _recObjectURL = null; }
+    _state.story             = null;
+    _state.quizIndex         = 0;
+    _state.quizScore         = 0;
+    _state.quizTotal         = 0;
+    _state.entryId           = null;
+    _state.recBlob           = null;
+    _state.recMimeType       = '';
+    _state.recTranscript     = '';
+    _state.recDuration       = 0;
+    _state.drillIndex        = 0;
+    _state.drillSentence     = '';
+    _state.drillScores       = [];
+    _state.pronunciationScore = undefined;
+    if (_state.recObjectURL) { URL.revokeObjectURL(_state.recObjectURL); _state.recObjectURL = null; }
     this._render();
   },
 
@@ -84,6 +128,7 @@ const TprsModule = {
       return;
     }
 
+    _state.entryId = lastEntry.id;
     this._renderReady(el, lastEntry);
   },
 
@@ -121,7 +166,8 @@ const TprsModule = {
     btn.textContent = '⏳ Génération en cours…';
 
     try {
-      _story = await TprsGenerator.generate(_lastEntry());
+      _state.story = await TprsGenerator.generate(_lastEntry());
+      _state.quizTotal = (_state.story?.questions || []).length;
       this._renderStory();
     } catch (err) {
       btn.disabled    = false;
@@ -138,20 +184,20 @@ const TprsModule = {
     const zone = document.getElementById('tprs-story-zone');
     const btn  = document.getElementById('tprs-gen-btn');
     if (btn)  btn.style.display = 'none';
-    if (!zone || !_story) return;
+    if (!zone || !_state.story) return;
 
-    const sentences = _story.sentences
+    const sentences = _state.story.sentences
       .map((s, i) => `<div class="tprs-sentence fade-up" style="animation-delay:${0.05 + i * 0.07}s">${s}</div>`)
       .join('');
 
-    const chips = (_story.vocabulary_used || [])
+    const chips = (_state.story.vocabulary_used || [])
       .map(w => `<span class="tprs-vocab-chip">${w}</span>`)
       .join('');
 
     zone.innerHTML = `
       <div class="tprs-story-card fade-up delay-1">
         <div class="tprs-story-label">Histoire générée</div>
-        <div class="tprs-story-title">${_story.title}</div>
+        <div class="tprs-story-title">${_state.story.title}</div>
         <div class="tprs-sentences">${sentences}</div>
         ${chips ? `<div class="tprs-vocab-row">${chips}</div>` : ''}
       </div>
@@ -173,7 +219,7 @@ const TprsModule = {
   },
 
   listen() {
-    if (!_story) return;
+    if (!_state.story) return;
     if (!('speechSynthesis' in window)) {
       window.toast('Synthèse vocale non supportée sur cet appareil.', 3000);
       return;
@@ -181,7 +227,7 @@ const TprsModule = {
 
     speechSynthesis.cancel();
 
-    const text = _story.sentences.join(' ');
+    const text = _state.story.sentences.join(' ');
     _utterance      = new SpeechSynthesisUtterance(text);
     _utterance.lang = 'pt-PT';
     _utterance.rate = 0.82;
@@ -237,55 +283,57 @@ const TprsModule = {
   },
 
   goToQuiz() {
-    _quizIndex = 0;
-    _quizScore = 0;
-    this._renderQuestion();
+    _state.quizIndex = 0;
+    _state.quizScore = 0;
+    this.renderQuestionScreen();
   },
 
-  _renderQuestion() {
+  renderQuestionScreen() {
     const zone = document.getElementById('tprs-quiz-zone');
-    if (!zone || !_story) return;
+    if (!zone || !_state.story) return;
 
-    if (_quizIndex >= _story.questions.length) {
+    if (_state.quizIndex >= _state.story.questions.length) {
       this._renderQuizResult();
       return;
     }
 
-    const q     = _story.questions[_quizIndex];
-    const total = _story.questions.length;
+    const q     = _state.story.questions[_state.quizIndex];
+    const total = _state.story.questions.length;
 
     zone.innerHTML = `
       <div class="tprs-quiz-card fade-up">
-        <div class="tprs-quiz-meta">${_quizIndex + 1} / ${total}</div>
+        <div class="tprs-quiz-meta">${_state.quizIndex + 1} / ${total}</div>
         <div class="tprs-quiz-q">${q.text}</div>
         <div class="tprs-quiz-btns">
-          <button class="btn tprs-btn-true"  onclick="tprsAnswer(true)">✓&nbsp; Vrai</button>
-          <button class="btn tprs-btn-false" onclick="tprsAnswer(false)">✗&nbsp; Faux</button>
+          <button class="btn tprs-btn-true">✓&nbsp; Vrai</button>
+          <button class="btn tprs-btn-false">✗&nbsp; Faux</button>
         </div>
       </div>
     `;
+
+    bindQuestionEvents(zone, q, _state.quizIndex, _state);
   },
 
   answer(userAnswer) {
-    const q       = _story.questions[_quizIndex];
+    const q       = _state.story.questions[_state.quizIndex];
     const correct = userAnswer === q.answer;
-    if (correct) _quizScore++;
+    if (correct) _state.quizScore++;
 
     window.toast(
       correct ? '✓ Correct !' : `✗ Incorrect — c'était ${q.answer ? 'Vrai' : 'Faux'}`,
       1800
     );
 
-    _quizIndex++;
-    setTimeout(() => this._renderQuestion(), 1600);
+    _state.quizIndex++;
+    setTimeout(() => this.renderQuestionScreen(), 1600);
   },
 
   _renderQuizResult() {
     const zone  = document.getElementById('tprs-quiz-zone');
     if (!zone) return;
 
-    const total = _story.questions.length;
-    const pct   = Math.round((_quizScore / total) * 100);
+    const total = _state.story.questions.length;
+    const pct   = Math.round((_state.quizScore / total) * 100);
     const stars = pct >= 80 ? '⭐⭐⭐' : pct >= 50 ? '⭐⭐' : '⭐';
 
     // Sauvegarder le score quiz
@@ -293,7 +341,7 @@ const TprsModule = {
     if (entry) {
       const prog = State.get('tprsProgress') || {};
       if (!prog[entry.id]) prog[entry.id] = {};
-      prog[entry.id].quizScore    = pct;
+      prog[entry.id].quizScore   = pct;
       prog[entry.id].quizDoneAt  = new Date().toISOString();
       State.set('tprsProgress', prog);
       Storage.save();
@@ -302,13 +350,138 @@ const TprsModule = {
     zone.innerHTML = `
       <div class="tprs-result-card fade-up">
         <div class="tprs-result-stars">${stars}</div>
-        <div class="tprs-result-score">${_quizScore}/${total} bonnes réponses</div>
+        <div class="tprs-result-score">${_state.quizScore}/${total} bonnes réponses</div>
         <div class="tprs-result-pct">${pct}%</div>
       </div>
     `;
 
-    // Enchaîner directement sur le retelling
-    setTimeout(() => this._renderRetellingPrompt(), 400);
+    // Enchaîner sur le drill si clé OpenAI disponible, sinon retelling
+    const openaiKey = Storage.getOpenAIKey();
+    if (openaiKey && _state.story?.sentences?.length > 0) {
+      setTimeout(() => this._renderDrillingPrompt(), 400);
+    } else {
+      setTimeout(() => this._renderRetellingPrompt(), 400);
+    }
+  },
+
+  // ─────────────────────────────────────────
+  // PHASE 3.5 — DRILL (répétition phonétique)
+  // Disponible uniquement si clé OpenAI configurée.
+  // ─────────────────────────────────────────
+
+  _renderDrillingPrompt() {
+    const zone = document.getElementById('tprs-retell-zone');
+    if (!zone || !_state.story) return;
+
+    _state.drillIndex  = 0;
+    _state.drillScores = [];
+
+    zone.innerHTML = `
+      <div class="tprs-drill-intro fade-up">
+        <div class="tprs-drill-label">Phase 3.5 · Drill phonétique</div>
+        <div class="tprs-drill-title">Répète chaque phrase à voix haute</div>
+        <div class="tprs-drill-desc">GPT-4o Audio va évaluer ta prononciation en temps réel.</div>
+        <button class="btn btn-primary" style="margin-top:16px" onclick="tprsStartDrill()">
+          🔊&nbsp; Commencer le drill
+        </button>
+        <button class="btn btn-ghost" style="margin-top:8px" onclick="tprsSkipDrill()">
+          Passer · aller au retelling
+        </button>
+      </div>
+    `;
+
+    window.tprsStartDrill = () => this._renderDrilling();
+    window.tprsSkipDrill  = () => this._renderRetellingPrompt();
+
+    setTimeout(() => zone.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+  },
+
+  _renderDrilling() {
+    const zone = document.getElementById('tprs-retell-zone');
+    if (!zone || !_state.story) return;
+
+    const sentences = _state.story.sentences;
+    if (_state.drillIndex >= sentences.length) {
+      this._renderDrillSummary();
+      return;
+    }
+
+    const sentence = sentences[_state.drillIndex];
+    const total    = sentences.length;
+    _state.drillSentence = sentence;
+
+    zone.innerHTML = `
+      <div class="tprs-drill-card fade-up">
+        <div class="tprs-drill-meta">${_state.drillIndex + 1} / ${total}</div>
+        <div class="tprs-drill-sentence">${sentence}</div>
+        <div class="tprs-drill-actions">
+          <button class="btn btn-ghost tprs-drill-listen-btn" onclick="tprsDrillListen()">
+            🔊&nbsp; Écouter
+          </button>
+          <button class="btn tprs-rec-btn" id="drill-record-btn" onclick="tprsDrillRecord()">
+            🎙️&nbsp; Répéter
+          </button>
+          <button class="btn tprs-rec-btn tprs-rec-stop" id="drill-stop-btn"
+            style="display:none" disabled>
+            ⏹&nbsp; Arrêter
+          </button>
+        </div>
+        <div class="tprs-drill-timer" id="drill-timer" style="display:none">0:00</div>
+        <div id="drill-feedback"></div>
+        <button class="btn btn-secondary" style="margin-top:14px" id="drill-next-btn"
+          onclick="tprsNextDrill()">
+          Suivant →
+        </button>
+      </div>
+    `;
+
+    this.bindFeedbackEvents(zone);
+    window.tprsDrillListen = () => this._drillSpeak(sentence);
+  },
+
+  bindFeedbackEvents(container) {
+    const recordBtn = container.querySelector('#drill-record-btn');
+    if (recordBtn) {
+      recordBtn.addEventListener('click', () => drillRecord(container, _state));
+    }
+  },
+
+  _drillSpeak(sentence) {
+    if (!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    const utt  = new SpeechSynthesisUtterance(sentence);
+    utt.lang   = 'pt-PT';
+    utt.rate   = 0.78;
+    const voices = speechSynthesis.getVoices();
+    const pt     = voices.find(v => v.lang === 'pt-PT') || voices.find(v => v.lang.startsWith('pt'));
+    if (pt) utt.voice = pt;
+    speechSynthesis.speak(utt);
+  },
+
+  _nextDrill() {
+    _state.drillIndex++;
+    this._renderDrilling();
+  },
+
+  _renderDrillSummary() {
+    const zone = document.getElementById('tprs-retell-zone');
+    if (!zone) return;
+
+    const scores = _state.drillScores;
+    const avg    = scores.length > 0
+      ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+      : 0;
+    const stars  = avg >= 80 ? '⭐⭐⭐' : avg >= 50 ? '⭐⭐' : '⭐';
+
+    zone.innerHTML = `
+      <div class="tprs-result-card fade-up">
+        <div class="tprs-result-stars">${stars}</div>
+        <div class="tprs-result-score">Drill terminé · Score moyen</div>
+        <div class="tprs-result-pct">${avg}/100</div>
+      </div>
+    `;
+
+    setTimeout(() => this._renderRetellingPrompt(), 500);
   },
 
   // ─────────────────────────────────────────
@@ -317,7 +490,7 @@ const TprsModule = {
 
   _renderRetellingPrompt() {
     const zone = document.getElementById('tprs-retell-zone');
-    if (!zone || !_story) return;
+    if (!zone || !_state.story) return;
 
     zone.innerHTML = `
       <div class="tprs-retell-card fade-up">
@@ -328,7 +501,7 @@ const TprsModule = {
 
         <div class="tprs-retelling-guide">
           <div class="trg-label">Mots-clés</div>
-          <div class="trg-words">${_story.retelling_guide}</div>
+          <div class="trg-words">${_state.story.retelling_guide}</div>
           <div class="trg-hint">Utilise ces mots-clés pour reconstruire l'histoire en portugais.</div>
         </div>
 
@@ -351,10 +524,13 @@ const TprsModule = {
     if (!zone) return;
 
     // Reset état
-    _recBlob       = null;
-    _recTranscript = '';
-    _recDuration   = 0;
-    if (_recObjectURL) { URL.revokeObjectURL(_recObjectURL); _recObjectURL = null; }
+    _state.recBlob       = null;
+    _state.recMimeType   = '';
+    _state.recTranscript = '';
+    _state.recDuration   = 0;
+    if (_state.recObjectURL) { URL.revokeObjectURL(_state.recObjectURL); _state.recObjectURL = null; }
+
+    const hasOpenAI = !!Storage.getOpenAIKey();
 
     // Afficher l'écran d'enregistrement en attente de permission
     zone.innerHTML = `
@@ -362,7 +538,7 @@ const TprsModule = {
         <div class="tprs-rec-status">Accès au microphone…</div>
         <div class="tprs-rec-timer" id="tprs-rec-timer">0:00</div>
         <div class="tprs-rec-transcript" id="tprs-rec-transcript">
-          <span class="tprs-transcript-placeholder">Transcription en cours…</span>
+          <span class="tprs-transcript-placeholder">${hasOpenAI ? 'Whisper transcrit après l\'arrêt…' : 'Transcription en cours…'}</span>
         </div>
         <button class="btn tprs-rec-btn tprs-rec-stop" id="tprs-rec-stop-btn" onclick="tprsStopRecording()" disabled>
           <span class="tprs-rec-icon">⏹</span>
@@ -377,9 +553,9 @@ const TprsModule = {
         if (event.type === 'timer') {
           _updateTimer(event.elapsed);
         }
-        if (event.type === 'transcript') {
+        if (event.type === 'transcript' && !hasOpenAI) {
           _updateTranscript(event.final, event.interim);
-          _recTranscript = event.final;
+          _state.recTranscript = event.final;
         }
       });
 
@@ -406,11 +582,28 @@ const TprsModule = {
     if (stopBtn) { stopBtn.disabled = true; stopBtn.innerHTML = '<span>Arrêt…</span>'; }
 
     try {
-      const result = await TprsRecorder.stop();
-      _recBlob       = result.blob;
-      _recTranscript = result.transcript;
-      _recDuration   = result.duration;
-      _recObjectURL  = TprsRecorder.createObjectURL(_recBlob);
+      const result        = await TprsRecorder.stop();
+      _state.recBlob      = result.blob;
+      _state.recMimeType  = result.mimeType || 'audio/webm';
+      _state.recDuration  = result.duration;
+      _state.recObjectURL = TprsRecorder.createObjectURL(_state.recBlob);
+
+      // Transcription Whisper (si clé OpenAI disponible)
+      const openaiKey = Storage.getOpenAIKey();
+      if (openaiKey && _state.recBlob) {
+        const transcriptEl = document.getElementById('tprs-rec-transcript');
+        if (transcriptEl) transcriptEl.innerHTML = '<span class="tprs-transcript-placeholder">Transcription Whisper…</span>';
+        try {
+          _state.recTranscript = await transcribe(_state.recBlob, _state.recMimeType, openaiKey);
+          if (transcriptEl) transcriptEl.textContent = _state.recTranscript;
+        } catch {
+          // Whisper a échoué — on continue avec le transcript SpeechRecognition
+          _state.recTranscript = result.transcript || '';
+        }
+      } else {
+        _state.recTranscript = result.transcript || '';
+      }
+
       this._renderReview();
     } catch (err) {
       window.toast('Erreur d\'enregistrement : ' + err.message, 3500);
@@ -427,9 +620,11 @@ const TprsModule = {
     const zone = document.getElementById('tprs-retell-zone');
     if (!zone) return;
 
-    const mins = Math.floor(_recDuration / 60);
-    const secs = String(_recDuration % 60).padStart(2, '0');
-    const hasTranscript = _recTranscript && _recTranscript.trim().length > 5;
+    const mins = Math.floor(_state.recDuration / 60);
+    const secs = String(_state.recDuration % 60).padStart(2, '0');
+    const hasTranscript = _state.recTranscript && _state.recTranscript.trim().length > 5;
+    const hasOpenAI     = !!Storage.getOpenAIKey();
+    const analyseLabel  = hasOpenAI ? '🎧&nbsp; Analyser avec GPT-4o Audio' : '🤖&nbsp; Analyser ma prononciation';
 
     zone.innerHTML = `
       <div class="tprs-review-card fade-up">
@@ -438,22 +633,22 @@ const TprsModule = {
           <div class="tprs-review-title">Écoute ton retelling</div>
         </div>
 
-        <audio class="tprs-audio-player" src="${_recObjectURL}" controls></audio>
+        <audio class="tprs-audio-player" src="${_state.recObjectURL}" controls></audio>
 
         ${hasTranscript ? `
         <div class="tprs-transcript-box">
-          <div class="tprs-transcript-label">Ce que tu as dit (transcription auto)</div>
-          <div class="tprs-transcript-text">${_recTranscript}</div>
+          <div class="tprs-transcript-label">Transcription ${hasOpenAI ? 'Whisper' : 'auto'}</div>
+          <div class="tprs-transcript-text">${_state.recTranscript}</div>
         </div>
         ` : `
         <div class="tprs-transcript-box tprs-transcript-empty">
           <div class="tprs-transcript-label">Transcription automatique</div>
-          <div class="tprs-transcript-text muted">Non disponible sur cet appareil.<br>Claude analysera sur la base de la durée et du guide.</div>
+          <div class="tprs-transcript-text muted">Non disponible sur cet appareil.<br>${hasOpenAI ? '' : 'Claude analysera sur la base de la durée et du guide.'}</div>
         </div>
         `}
 
         <button class="btn btn-primary" style="margin-top:12px" onclick="tprsAnalyse()">
-          🤖&nbsp; Analyser ma prononciation
+          ${analyseLabel}
         </button>
         <button class="btn btn-ghost" style="margin-top:8px" onclick="tprsRetryRecording()">
           ↺&nbsp; Recommencer
@@ -463,27 +658,45 @@ const TprsModule = {
   },
 
   // ─────────────────────────────────────────
-  // PHASE 5 — ANALYSE (CLAUDE)
+  // PHASE 5 — ANALYSE (GPT-4o Audio ou Claude)
   // ─────────────────────────────────────────
 
   async analyse() {
     const zone = document.getElementById('tprs-retell-zone');
-    if (!zone || !_story) return;
+    if (!zone || !_state.story) return;
+
+    const openaiKey = Storage.getOpenAIKey();
+    const label     = openaiKey ? 'GPT-4o Audio évalue ta phonétique…' : 'Claude analyse ta prononciation…';
 
     zone.innerHTML = `
       <div class="tprs-analysing fade-up">
         <div class="tprs-analysing-spinner"></div>
-        <div class="tprs-analysing-text">Claude analyse ta prononciation…</div>
+        <div class="tprs-analysing-text">${label}</div>
       </div>
     `;
 
     try {
-      const result = await TprsAnalyser.analyse({
-        transcript: _recTranscript,
-        story:      _story,
-        duration:   _recDuration,
-      });
+      let result;
+      if (openaiKey && _state.recBlob) {
+        // ── GPT-4o Audio : évaluation phonétique réelle ──
+        result = await evaluatePronunciation(
+          _state.recBlob,
+          _state.recMimeType,
+          _state.story,
+          _state.recTranscript,
+          openaiKey
+        );
+      } else {
+        // ── Fallback : analyse textuelle Claude ──────────
+        result = await TprsAnalyser.analyse({
+          transcript: _state.recTranscript,
+          story:      _state.story,
+          duration:   _state.recDuration,
+        });
+      }
+      _state.pronunciationScore = result.score;
       this._renderAnalysis(result);
+      finishSession(_state);
     } catch (err) {
       window.toast('Erreur d\'analyse : ' + err.message, 4000);
       this._renderReview();
@@ -574,7 +787,7 @@ const TprsModule = {
     `;
 
     // Révoquer l'URL blob maintenant qu'on n'en a plus besoin
-    if (_recObjectURL) { URL.revokeObjectURL(_recObjectURL); _recObjectURL = null; }
+    if (_state.recObjectURL) { URL.revokeObjectURL(_state.recObjectURL); _state.recObjectURL = null; }
   },
 
 };
