@@ -4,6 +4,7 @@
 
 import State   from './state.js';
 import Storage from './storage.js';
+import { renderOpenAIKeyBlock, bindOpenAIKeyEvents } from './settings-openai-patch.js';
 
 const SettingsModule = {
 
@@ -19,6 +20,7 @@ const SettingsModule = {
   onEnter() {
     this._renderNotif();
     this._renderApiKey();
+    this._renderOpenAIKey();
   },
 
   // ── NOTIFICATIONS ────────────────────────
@@ -94,6 +96,15 @@ const SettingsModule = {
       input.type   = 'password';
       if (btn) btn.textContent = '👁';
     }
+  },
+
+  // ── CLÉ API OPENAI ───────────────────────
+
+  _renderOpenAIKey() {
+    const container = document.getElementById('settings-openai-section');
+    if (!container) return;
+    container.innerHTML = renderOpenAIKeyBlock();
+    bindOpenAIKeyEvents(container);
   },
 
   // ── RESET ────────────────────────────────
