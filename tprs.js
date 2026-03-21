@@ -23,6 +23,7 @@ let _utterance = null;
 // Objet d'état partagé avec les patch functions
 const _state = {
   story:             null,
+  selectedEntry:     null,   // entrée du journal choisie pour cette session
   quizIndex:         0,
   quizScore:         0,
   quizTotal:         0,
@@ -62,6 +63,9 @@ const TprsModule = {
       const container = document.querySelector('.tprs-drill-card');
       if (container) drillRecord(container, _state);
     };
+    window.tprsSelectEntry    = (id)  => this.selectEntry(id);
+    window.tprsBackToList     = ()    => this.onEnter();
+    window.tprsQuizMic        = ()    => this._handleQuizMic();
 
     // ── Listeners patch ──────────────────────
     document.addEventListener('oral:next-question', (e) => {
@@ -83,6 +87,7 @@ const TprsModule = {
 
   onEnter() {
     _state.story             = null;
+    _state.selectedEntry     = null;
     _state.quizIndex         = 0;
     _state.quizScore         = 0;
     _state.quizTotal         = 0;
@@ -99,38 +104,85 @@ const TprsModule = {
     this._render();
   },
 
-  // ── RENDU PRINCIPAL ──────────────────────
+  // ── RENDU PRINCIPAL — ÉCRAN 1 : sélection du cours ───
 
   _render() {
     const el = document.getElementById('tprs-content');
     if (!el) return;
 
-    const lastEntry = _lastEntry();
     const hasApiKey = !!State.get('claudeApiKey');
-
-    if (!lastEntry) {
-      el.innerHTML = _tplEmpty(
-        '📖',
-        'Aucun cours enregistré',
-        'Saisis d\'abord une séance dans le Journal pour que je génère une histoire adaptée.',
-        `<button class="btn btn-secondary" style="margin-top:16px" onclick="navigate('journal')">Ouvrir le journal</button>`
-      );
-      return;
-    }
+    const entries   = [...(State.get('entries') || [])].reverse(); // plus récent en premier
+    const progress  = State.get('tprsProgress') || {};
 
     if (!hasApiKey) {
       el.innerHTML = _tplEmpty(
         '🔑',
-        'Clé API requise',
-        'Configure ta clé Claude API dans les Réglages pour activer la génération d\'histoires personnalisées.',
+        'Clé API Claude requise',
+        'Configure ta clé dans les Réglages pour générer des histoires TPRS personnalisées.',
         `<button class="btn btn-secondary" style="margin-top:16px" onclick="navigate('settings')">Ouvrir les réglages</button>`
       );
       return;
     }
 
-    _state.entryId = lastEntry.id;
-    this._renderReady(el, lastEntry);
+    if (!entries.length) {
+      el.innerHTML = _tplEmpty(
+        '📖',
+        'Aucun cours enregistré',
+        'Saisis d\'abord une séance dans le Journal pour générer une histoire adaptée.',
+        `<button class="btn btn-secondary" style="margin-top:16px" onclick="navigate('journal')">Ouvrir le journal</button>`
+      );
+      return;
+    }
+
+    this._renderEntryList(el, entries, progress);
   },
+
+  _renderEntryList(el, entries, progress) {
+    const withSession = entries.filter(e =>
+      progress[e.id] && (progress[e.id].quizScore !== undefined || progress[e.id].pronunciationScore !== undefined)
+    );
+
+    const sessionHTML = withSession.length ? `
+      <div class="tprs-section-label">Sessions passées</div>
+      ${withSession.map(e => _tplSessionCard(e, progress[e.id])).join('')}
+      <div class="tprs-section-label" style="margin-top:20px">Tous tes cours</div>
+    ` : '<div class="tprs-section-label">Choisis un cours</div>';
+
+    el.innerHTML = `
+      ${sessionHTML}
+      ${entries.map(e => _tplEntryCard(e, progress[e.id])).join('')}
+    `;
+  },
+
+  // ── Sélection d'un cours ─────────────────
+  // Appelé depuis les boutons "Générer" / "Rejouer"
+
+  selectEntry(entryId) {
+    const entries = State.get('entries') || [];
+    const entry   = entries.find(e => e.id === entryId);
+    if (!entry) return;
+
+    // Reset état session
+    _state.story             = null;
+    _state.selectedEntry     = entry;
+    _state.entryId           = entryId;
+    _state.quizIndex         = 0;
+    _state.quizScore         = 0;
+    _state.quizTotal         = 0;
+    _state.recBlob           = null;
+    _state.recMimeType       = '';
+    _state.recTranscript     = '';
+    _state.recDuration       = 0;
+    _state.drillIndex        = 0;
+    _state.drillScores       = [];
+    _state.pronunciationScore = undefined;
+    if (_state.recObjectURL) { URL.revokeObjectURL(_state.recObjectURL); _state.recObjectURL = null; }
+
+    const el = document.getElementById('tprs-content');
+    this._renderReady(el, entry);
+  },
+
+  // ── ÉCRAN 1b : confirmation + bouton Générer ──
 
   _renderReady(el, entry) {
     const dateStr    = new Date(entry.date + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
@@ -139,8 +191,12 @@ const TprsModule = {
     const vocabCount = (entry.vocab || []).length;
 
     el.innerHTML = `
+      <button class="btn btn-ghost" style="margin-bottom:12px;font-size:13px" onclick="tprsBackToList()">
+        ← Retour à la liste
+      </button>
+
       <div class="tprs-source-card fade-up delay-1">
-        <div class="tprs-source-label">Basé sur ton dernier cours</div>
+        <div class="tprs-source-label">Cours sélectionné</div>
         <div class="tprs-source-title">${unitStr} · ${dateStr}</div>
         ${notions    ? `<div class="tprs-source-notions">${notions}</div>` : ''}
         ${vocabCount ? `<div class="tprs-source-vocab">${vocabCount} mot${vocabCount > 1 ? 's' : ''} de vocabulaire</div>` : ''}
@@ -166,7 +222,7 @@ const TprsModule = {
     btn.textContent = '⏳ Génération en cours…';
 
     try {
-      _state.story = await TprsGenerator.generate(_lastEntry());
+      _state.story = await TprsGenerator.generate(_state.selectedEntry || _lastEntry());
       _state.quizTotal = (_state.story?.questions || []).length;
       this._renderStory();
     } catch (err) {
@@ -300,10 +356,21 @@ const TprsModule = {
     const q     = _state.story.questions[_state.quizIndex];
     const total = _state.story.questions.length;
 
+    const hasOpenAI = !!Storage.getOpenAIKey();
+
     zone.innerHTML = `
       <div class="tprs-quiz-card fade-up">
         <div class="tprs-quiz-meta">${_state.quizIndex + 1} / ${total}</div>
         <div class="tprs-quiz-q">${q.text}</div>
+
+        ${hasOpenAI ? `
+        <button class="btn tprs-quiz-mic-btn" id="quiz-mic-btn" onclick="tprsQuizMic()">
+          🎙️&nbsp; Répondre à voix haute
+        </button>
+        <div id="quiz-mic-status" class="tprs-quiz-mic-status" style="display:none"></div>
+        <div class="tprs-quiz-or"><span>ou</span></div>
+        ` : ''}
+
         <div class="tprs-quiz-btns">
           <button class="btn tprs-btn-true">✓&nbsp; Vrai</button>
           <button class="btn tprs-btn-false">✗&nbsp; Faux</button>
@@ -312,6 +379,87 @@ const TprsModule = {
     `;
 
     bindQuestionEvents(zone, q, _state.quizIndex, _state);
+  },
+
+  // ── Réponse orale au quiz (MediaRecorder → Whisper) ──
+
+  async _handleQuizMic() {
+    const micBtn = document.getElementById('quiz-mic-btn');
+    const status = document.getElementById('quiz-mic-status');
+    if (!micBtn) return;
+
+    const openaiKey = Storage.getOpenAIKey();
+    if (!openaiKey) {
+      window.toast('Clé API OpenAI requise pour la réponse vocale', 2500);
+      return;
+    }
+
+    micBtn.disabled     = true;
+    micBtn.textContent  = '⏳ Accès micro…';
+    if (status) { status.style.display = ''; status.textContent = ''; }
+
+    let stream, recorder;
+    const chunks = [];
+
+    try {
+      stream   = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      window.toast('Microphone inaccessible', 2000);
+      micBtn.disabled    = false;
+      micBtn.textContent = '🎙️ Répondre à voix haute';
+      return;
+    }
+
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
+
+    recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+    recorder.ondataavailable = e => { if (e.data?.size > 0) chunks.push(e.data); };
+    recorder.start(300);
+
+    // Compte à rebours 3 s
+    let count = 3;
+    micBtn.textContent = `⏹ ${count}…`;
+    const countdown = setInterval(() => {
+      count--;
+      if (count > 0) {
+        micBtn.textContent = `⏹ ${count}…`;
+      } else {
+        clearInterval(countdown);
+        if (recorder.state === 'recording') recorder.stop();
+      }
+    }, 1000);
+
+    recorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      micBtn.textContent = '🔄 Whisper…';
+
+      const usedMime = mime || 'audio/webm';
+      const blob     = new Blob(chunks, { type: usedMime });
+
+      try {
+        const text  = await transcribe(blob, usedMime, openaiKey);
+        if (status) status.textContent = `"${text}"`;
+
+        const lower   = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const isTrue  = /\b(vrai|sim|verdade|certo|e verdade|yes)\b/.test(lower);
+        const isFalse = /\b(faux|falso|nao|nao e|errado|errada|incorrect|non)\b/.test(lower);
+
+        if (isTrue || isFalse) {
+          micBtn.style.display = 'none';
+          setTimeout(() => this.answer(isTrue), 600);
+        } else {
+          if (status) status.textContent = `"${text}" — dis « vrai » ou « falso »`;
+          micBtn.disabled    = false;
+          micBtn.textContent = '🎙️ Réessayer';
+        }
+      } catch {
+        if (status) status.textContent = 'Erreur — utilise les boutons';
+        micBtn.disabled    = false;
+        micBtn.textContent = '🎙️ Réessayer';
+      }
+    };
   },
 
   answer(userAnswer) {
@@ -337,7 +485,7 @@ const TprsModule = {
     const stars = pct >= 80 ? '⭐⭐⭐' : pct >= 50 ? '⭐⭐' : '⭐';
 
     // Sauvegarder le score quiz
-    const entry = _lastEntry();
+    const entry = _state.selectedEntry || _lastEntry();
     if (entry) {
       const prog = State.get('tprsProgress') || {};
       if (!prog[entry.id]) prog[entry.id] = {};
@@ -708,7 +856,7 @@ const TprsModule = {
     if (!zone) return;
 
     // Sauvegarder l'analyse dans l'état
-    const entry = _lastEntry();
+    const entry = _state.selectedEntry || _lastEntry();
     if (entry) {
       const prog = State.get('tprsProgress') || {};
       if (!prog[entry.id]) prog[entry.id] = {};
@@ -718,8 +866,7 @@ const TprsModule = {
       Storage.save();
     }
 
-    const scoreColor = result.score >= 75 ? 'var(--olive)' : result.score >= 50 ? 'var(--gold)' : 'var(--terra)';
-    const scoreRing  = result.score >= 75 ? 'score-great' : result.score >= 50 ? 'score-ok' : 'score-low';
+    const scoreRing = result.score >= 75 ? 'score-great' : result.score >= 50 ? 'score-ok' : 'score-low';
 
     const positives = (result.positives || [])
       .map(p => `<div class="tprs-feedback-item positive">✓ ${p}</div>`)
@@ -741,6 +888,30 @@ const TprsModule = {
     const tips = (result.pronunciation_tips || [])
       .map(t => `<div class="tprs-tip-item">💡 ${t}</div>`)
       .join('');
+
+    // ── Vocabulaire exercé ───────────────────
+    const vocabUsed   = _state.story?.vocabulary_used || [];
+    const entryVocab  = (entry?.vocab || []);
+    const vocabCards  = vocabUsed.map(word => {
+      const match = entryVocab.find(v => v.pt?.toLowerCase() === word.toLowerCase());
+      return `<div class="tprs-vocab-review-chip">
+        <span class="tprs-vocab-pt">${word}</span>
+        ${match ? `<span class="tprs-vocab-fr">${match.fr}</span>` : ''}
+      </div>`;
+    }).join('');
+
+    const vocabSection = vocabCards ? `
+      <div class="tprs-feedback-section">
+        <div class="tprs-feedback-label">📚 Vocabulaire exercé</div>
+        <div class="tprs-vocab-review-grid">${vocabCards}</div>
+        <button class="btn btn-ghost" style="margin-top:10px;font-size:12px" onclick="openTransport()">
+          🚇&nbsp; Réviser en mode transport
+        </button>
+      </div>
+    ` : '';
+
+    // ── Astuce phonétique du jour ────────────
+    const tip = _phoneticsOfDay();
 
     zone.innerHTML = `
       <div class="tprs-analysis-card fade-up">
@@ -774,9 +945,16 @@ const TprsModule = {
         </div>
         ` : ''}
 
+        ${vocabSection}
+
+        <div class="tprs-feedback-section tprs-tip-section">
+          <div class="tprs-feedback-label">💡 Astuce du jour</div>
+          <div class="tprs-tip-of-day">${tip}</div>
+        </div>
+
         <div class="tprs-analysis-actions">
-          <button class="btn btn-primary" onclick="tprsGenerate(); document.getElementById('tprs-quiz-zone').innerHTML=''; document.getElementById('tprs-retell-zone').innerHTML='';">
-            ✨&nbsp; Nouvelle histoire
+          <button class="btn btn-primary" onclick="tprsBackToList()">
+            ← Nouvelle session
           </button>
           <button class="btn btn-ghost" onclick="navigate('home')">
             Retour à l'accueil
@@ -832,6 +1010,72 @@ function _tplEmpty(icon, title, sub, cta = '') {
       ${cta}
     </div>
   `;
+}
+
+// ── Templates : cartes de sélection ──────────
+
+function _tplEntryCard(entry, session) {
+  const dateStr    = new Date(entry.date + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+  const unitStr    = entry.type === 'manuel' ? `Unité ${entry.unit}` : 'Hors manuel';
+  const notions    = (entry.notions || []).slice(0, 3).join(' · ');
+  const vocabCount = (entry.vocab || []).length;
+  const quizScore  = session?.quizScore  !== undefined ? `<span class="tprs-score-chip">Quiz ${session.quizScore}%</span>`  : '';
+  const pronScore  = session?.pronunciationScore !== undefined ? `<span class="tprs-score-chip">Phon. ${session.pronunciationScore}/100</span>` : '';
+
+  return `
+    <div class="tprs-entry-card fade-up">
+      <div class="tprs-entry-info">
+        <div class="tprs-entry-title">${unitStr}</div>
+        <div class="tprs-entry-date">${dateStr}</div>
+        ${notions    ? `<div class="tprs-entry-notions">${notions}</div>` : ''}
+        ${vocabCount ? `<div class="tprs-entry-vocab">${vocabCount} mot${vocabCount > 1 ? 's' : ''}</div>` : ''}
+        ${quizScore || pronScore ? `<div class="tprs-entry-scores">${quizScore}${pronScore}</div>` : ''}
+      </div>
+      <button class="btn btn-primary tprs-entry-gen-btn" onclick="tprsSelectEntry('${entry.id}')">
+        ✨ Générer
+      </button>
+    </div>
+  `;
+}
+
+function _tplSessionCard(entry, session) {
+  const dateStr  = new Date(entry.date + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+  const unitStr  = entry.type === 'manuel' ? `Unité ${entry.unit}` : 'Hors manuel';
+  const doneAt   = session.completedAt || session.analysedAt || session.quizDoneAt;
+  const doneStr  = doneAt ? new Date(doneAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '';
+  const quizChip = session.quizScore  !== undefined ? `<span class="tprs-score-chip">Quiz ${session.quizScore}%</span>` : '';
+  const pronChip = session.pronunciationScore !== undefined ? `<span class="tprs-score-chip">Phon. ${session.pronunciationScore}/100</span>` : '';
+
+  return `
+    <div class="tprs-session-card fade-up">
+      <div class="tprs-session-info">
+        <div class="tprs-session-title">${unitStr} · ${dateStr}</div>
+        <div class="tprs-session-meta">
+          ${quizChip}${pronChip}
+          ${doneStr ? `<span class="tprs-date-chip">${doneStr}</span>` : ''}
+        </div>
+      </div>
+      <button class="btn btn-secondary tprs-session-replay-btn" onclick="tprsSelectEntry('${entry.id}')">
+        ↺ Rejouer
+      </button>
+    </div>
+  `;
+}
+
+// ── Astuce phonétique du jour ─────────────────
+
+const _PHONETICS = [
+  'Le « e » non accentué se prononce presque muet en portugais européen — <em>tarde</em> sonne « tard ».',
+  'Le « o » non accentué se ferme vers « u » — <em>amor</em> sonne comme « amur ».',
+  'Le « lh » équivaut au « gli » italien ou « ll » espagnol — <em>filho</em> = « fi-lyu ».',
+  'Le « nh » se prononce « gn » français — <em>minhoca</em> = « mi-gno-ca ».',
+  'Le « ão » final est nasalisé — prononce comme si tu pinçais le nez sur « ãm ».',
+  'Le « rr » est uvulaire comme en français — roule-le dans la gorge, pas avec la langue.',
+  'Le « s » entre deux voyelles se prononce « z » — <em>casa</em> = « ca-za ».',
+];
+
+function _phoneticsOfDay() {
+  return _PHONETICS[new Date().getDay() % _PHONETICS.length];
 }
 
 export default TprsModule;
