@@ -21,18 +21,15 @@ const GPT4O_AUDIO     = 'gpt-4o-audio-preview';
 async function convertToWav(blob) {
   const arrayBuffer  = await blob.arrayBuffer();
   const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-  let audioBuffer;
   try {
-    audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    const wav = _audioBufferToWav(audioBuffer);
+    return new Blob([wav], { type: 'audio/wav' });
   } catch (e) {
-    throw new Error('Impossible de décoder l\'audio : ' + e.message);
+    throw new Error('Décodage audio impossible : ' + e.message);
   } finally {
     audioContext.close();
   }
-
-  const wav = _audioBufferToWav(audioBuffer);
-  return new Blob([wav], { type: 'audio/wav' });
 }
 
 // Encode un AudioBuffer en WAV PCM 16-bit mono 16 kHz

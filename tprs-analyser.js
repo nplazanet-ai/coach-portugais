@@ -1,8 +1,7 @@
 // ─────────────────────────────────────────────
-//  modules/tprs/tprs-analyser.js
-//  Analyse la prononciation du retelling :
-//  compare la transcription STT avec l'histoire
-//  cible et retourne un feedback structuré via Claude.
+//  tprs-analyser.js
+//  Analyse la prononciation du retelling +
+//  génère le tip du jour via Claude.
 // ─────────────────────────────────────────────
 
 import State from './state.js';
@@ -12,22 +11,11 @@ const MODEL         = 'claude-opus-4-6';
 
 const TprsAnalyser = {
 
-  // ── ANALYSE PRINCIPALE ───────────────────
-  //
-  // Paramètres :
-  //   transcript   — ce que SpeechRecognition a entendu (string)
-  //   story        — l'objet histoire généré (sentences, retelling_guide, vocabulary_used)
-  //   duration     — durée de l'enregistrement en secondes
-  //
-  // Retourne :
-  //   { score, summary, positives[], errors[], pronunciation_tips[] }
-
+  // ── ANALYSE RETELLING ────────────────────
   async analyse({ transcript, story, duration }) {
     const apiKey = State.get('claudeApiKey');
     if (!apiKey) throw new Error('Clé API Claude manquante.');
 
-    // Si pas de transcription (SpeechRecognition indisponible), on analyse
-    // quand même sur la base de la durée et du retelling guide
     const hasTranscript = transcript && transcript.trim().length > 5;
 
     const body = {
@@ -42,9 +30,10 @@ const TprsAnalyser = {
       response = await fetch(ANTHROPIC_API, {
         method:  'POST',
         headers: {
-          'Content-Type':      'application/json',
-          'x-api-key':         apiKey,
-          'anthropic-version': '2023-06-01',
+          'Content-Type':                                  'application/json',
+          'x-api-key':                                     apiKey,
+          'anthropic-version':                             '2023-06-01',
+          'anthropic-dangerous-direct-browser-access':     'true',
         },
         body: JSON.stringify(body),
       });
@@ -71,16 +60,56 @@ const TprsAnalyser = {
     }
   },
 
+  // ── GÉNÉRATION DU TIP DU JOUR ─────────────
+  //
+  // Génère un conseil phonétique personnalisé via Claude.
+  // Commence toujours par ☝️
+  // Retourne une string.
+
+  async generateTip(story) {
+    const apiKey = State.get('claudeApiKey');
+    if (!apiKey) return null;
+
+    const keyStructure = story?.key_structure || '';
+    const vocabUsed    = (story?.vocabulary_used || []).join(', ');
+
+    const body = {
+      model:      MODEL,
+      max_tokens: 150,
+      system:     'Tu es un coach expert en portugais européen. Tu donnes UN seul conseil phonétique concret et précis pour francophones apprenant le portugais. Réponds en 1-2 phrases uniquement, en français, commençant OBLIGATOIREMENT par ☝️',
+      messages: [{
+        role: 'user',
+        content: `Génère un conseil phonétique du jour sur le portugais européen, en lien avec${keyStructure ? ` la structure "${keyStructure}" ou` : ''} l'un de ces mots : ${vocabUsed || 'vocabulaire courant'}. 1-2 phrases, commence par ☝️`,
+      }],
+    };
+
+    try {
+      const response = await fetch(ANTHROPIC_API, {
+        method:  'POST',
+        headers: {
+          'Content-Type':                                  'application/json',
+          'x-api-key':                                     apiKey,
+          'anthropic-version':                             '2023-06-01',
+          'anthropic-dangerous-direct-browser-access':     'true',
+        },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data.content?.[0]?.text?.trim() || null;
+    } catch {
+      return null;
+    }
+  },
+
 };
 
 // ── PROMPTS ──────────────────────────────────
 
 function _systemPrompt() {
   return `Tu es un coach expert en prononciation et expression orale du portugais européen (Portugal).
-
 Tu analyses les retelling d'apprenants A1-A2 en comparant ce qu'ils ont dit avec l'histoire cible.
 Tu donnes des retours bienveillants, précis et pédagogiques, en français.
-
 Retourne UNIQUEMENT un objet JSON valide, sans markdown ni explication.`;
 }
 
@@ -104,15 +133,12 @@ Vocabulaire attendu : ${vocabUsed}
 
 ${transcriptSection}
 
-Analyse le retelling et retourne un objet JSON au format suivant :
+Analyse le retelling et retourne un objet JSON :
 
 {
   "score": 72,
   "summary": "Phrase de résumé bienveillante en français (1 phrase).",
-  "positives": [
-    "Point positif 1",
-    "Point positif 2"
-  ],
+  "positives": ["Point positif 1", "Point positif 2"],
   "errors": [
     {
       "type": "vocabulaire|grammaire|prononciation|omission",
@@ -121,19 +147,10 @@ Analyse le retelling et retourne un objet JSON au format suivant :
       "tip": "Conseil pédagogique précis en français"
     }
   ],
-  "pronunciation_tips": [
-    "Conseil phonétique général 1",
-    "Conseil phonétique général 2"
-  ]
+  "pronunciation_tips": ["Conseil phonétique 1", "Conseil phonétique 2"]
 }
 
-Contraintes :
-- score entre 0 et 100 (base : qualité + couverture du vocabulaire + fluidité estimée)
-- 1 à 2 points positifs (toujours)
-- 0 à 4 erreurs maximum (les plus importantes)
-- 1 à 3 conseils phonétiques généraux sur le portugais européen
-- Si transcription absente : score basé sur la durée (${duration}s pour ${story.sentences.length} phrases) et encouragements
-- Ton bienveillant, précis, motivant`;
+Contraintes : score 0-100, 1-2 positifs, 0-4 erreurs max, 1-3 conseils phonétiques, ton bienveillant.${!hasTranscript ? ` Score basé sur la durée (${duration}s pour ${story.sentences.length} phrases).` : ''}`;
 }
 
 export default TprsAnalyser;

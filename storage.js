@@ -81,6 +81,23 @@ const Storage = {
     }
   },
 
+  // ── HISTOIRES TPRS (pour "Rejouer") ───────
+  //
+  // Sauvegarde l'histoire générée afin de pouvoir la rejouer
+  // sans appeler Claude à nouveau.
+
+  saveTPRSStory(entryId, story) {
+    const stories = State.get('tprsStories') || {};
+    stories[entryId] = story;
+    State.set('tprsStories', stories);
+    this.save();
+  },
+
+  getTPRSStory(entryId) {
+    const stories = State.get('tprsStories') || {};
+    return stories[entryId] || null;
+  },
+
 };
 
 function _today() {
