@@ -4,7 +4,7 @@
 //  assets statiques, réseau-first pour les API.
 // ─────────────────────────────────────────────
 
-const CACHE_NAME = 'coach-pt-v2';
+const CACHE_NAME = 'coach-pt-v3';
 
 const STATIC_FILES = [
   './',
