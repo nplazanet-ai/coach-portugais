@@ -53,7 +53,7 @@
 .tprs-entry-notions { font-size:11px; color:var(--tprs-muted); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .tprs-entry-vocab   { font-size:11px; color:var(--tprs-muted); }
 .tprs-entry-scores  { display:flex; gap:4px; margin-top:5px; flex-wrap:wrap; }
-.tprs-entry-gen-btn { white-space:nowrap; flex-shrink:0; font-size:13px; padding:8px 12px; border-radius:10px; }
+.tprs-entry-gen-btn { white-space:nowrap; flex-shrink:0; font-size:13px; padding:8px 12px; border-radius:10px; width:auto; }
 .tprs-surprise-card { border-style:dashed; opacity:.85; cursor:pointer; }
 .tprs-session-card {
   background:var(--cream2); border:1px solid var(--tprs-border);
@@ -63,7 +63,7 @@
 .tprs-session-info       { flex:1; min-width:0; }
 .tprs-session-title      { font-weight:600; font-size:13px; color:var(--tprs-text); }
 .tprs-session-meta       { display:flex; gap:4px; margin-top:5px; flex-wrap:wrap; align-items:center; }
-.tprs-session-replay-btn { white-space:nowrap; flex-shrink:0; font-size:13px; padding:8px 12px; border-radius:10px; }
+.tprs-session-replay-btn { white-space:nowrap; flex-shrink:0; font-size:13px; padding:8px 12px; border-radius:10px; width:auto; }
 .tprs-score-chip { background:var(--tprs-green); color:white; border-radius:20px; font-size:10px; font-weight:700; padding:2px 7px; }
 .tprs-date-chip  { font-size:10px; color:var(--tprs-muted); }
 
