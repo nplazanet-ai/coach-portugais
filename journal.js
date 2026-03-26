@@ -235,13 +235,10 @@ const JournalModule = {
     }
   },
 
-  // Saisie libre d'une notion (touche Entrée)
-  handleNotionInput(e) {
-    if (e.key !== 'Enter') return;
-    const val = e.target.value.trim();
+  // Ajouter une notion depuis le champ texte
+  _addNotion(val) {
     if (!val || _form.notions.includes(val)) return;
     _form.notions.push(val);
-    // Ajouter un tag visuel
     const el = document.getElementById('notions-suggestions');
     const tag = document.createElement('span');
     tag.className = 'tag selected';
@@ -251,6 +248,20 @@ const JournalModule = {
       tag.remove();
     };
     el.appendChild(tag);
+  },
+
+  addNotionFromInput() {
+    const input = document.getElementById('notion-input');
+    const val = input.value.trim();
+    this._addNotion(val);
+    input.value = '';
+  },
+
+  // Saisie libre d'une notion (touche Entrée)
+  handleNotionInput(e) {
+    if (e.key !== 'Enter') return;
+    const val = e.target.value.trim();
+    this._addNotion(val);
     e.target.value = '';
   },
 
@@ -322,6 +333,10 @@ const JournalModule = {
   saveEntry() {
     const date  = document.getElementById('form-date').value;
     const notes = document.getElementById('form-notes').value.trim();
+
+    // Auto-ajouter une notion en cours de saisie si l'utilisateur n'a pas appuyé sur Entrée/+
+    const notionInput = document.getElementById('notion-input');
+    if (notionInput?.value.trim()) this.addNotionFromInput();
 
     // Validations
     if (!date) { window.toast('⚠️ Indique la date du cours'); return; }
@@ -396,7 +411,8 @@ window._removePhoto = function(i) {
   JournalModule._renderPhotoPreviews();
 };
 
-// Exposé pour la saisie libre de notion
-window.handleNotionInput = (e) => JournalModule.handleNotionInput(e);
+// Exposés pour la saisie libre de notion
+window.handleNotionInput  = (e) => JournalModule.handleNotionInput(e);
+window.addNotionFromInput = ()  => JournalModule.addNotionFromInput();
 
 export default JournalModule;
