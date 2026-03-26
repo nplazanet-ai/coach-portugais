@@ -234,8 +234,11 @@
   <div class="form-group">
     <label class="form-label">Notions abordées</label>
     <div class="tags" id="notions-suggestions"></div>
-    <input type="text" class="form-input" placeholder="Ajouter une notion libre…"
-      style="margin-top:8px" onkeydown="handleNotionInput(event)">
+    <div class="vocab-form-row" style="margin-top:8px">
+      <input type="text" class="form-input" id="notion-input" placeholder="Ajouter une notion libre…"
+        onkeydown="handleNotionInput(event)">
+      <button class="vocab-add-btn" onclick="addNotionFromInput()">＋</button>
+    </div>
   </div>
 
   <div class="form-group">
