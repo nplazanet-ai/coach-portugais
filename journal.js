@@ -7,7 +7,8 @@ import Storage from './storage.js';
 import { UNITS, getUnit } from './data.js';
 
 // ── État local du formulaire ──────────────────
-let _form = _emptyForm();
+let _form   = _emptyForm();
+let _editId = null; // id de l'entrée en cours d'édition (null = nouvelle séance)
 
 function _emptyForm() {
   return {
@@ -36,7 +37,22 @@ const JournalModule = {
     window.addVocabRow       = () => this.addVocabRow();
     window.removeVocab       = (i) => this.removeVocab(i);
     window.deleteEntry       = (id) => this.deleteEntry(id);
-    window.pickPhoto         = () => this._pickPhoto();
+    window.editEntry         = (id) => this.editEntry(id);
+    window.viewEntry         = (id) => this.viewEntry(id);
+    window.pickPhoto         = () => this._showPhotoPicker();
+    window.pickPhotoCamera   = () => this._pickPhoto(true);
+    window.pickPhotoGallery  = () => this._pickPhoto(false);
+    window.closePhotoPicker  = () => this._closePhotoPicker();
+    window.closeDetailSheet  = () => this._closeDetailSheet();
+
+    // Fermer la sheet journal uniquement sur un vrai tap (pas un scroll)
+    const overlay = document.getElementById('journal-overlay');
+    let _touchStartY = 0;
+    overlay.addEventListener('touchstart', (e) => { _touchStartY = e.touches[0].clientY; }, { passive: true });
+    overlay.addEventListener('touchend',   (e) => {
+      if (Math.abs(e.changedTouches[0].clientY - _touchStartY) < 10) this.closeSheet();
+    });
+    overlay.addEventListener('click', () => this.closeSheet());
   },
 
   onEnter() {
@@ -118,7 +134,9 @@ const JournalModule = {
         ${photoBlock}
         ${noteBlock}
         <div class="entry-actions">
-          <button class="btn btn-danger btn-sm" onclick="deleteEntry('${e.id}')">Supprimer</button>
+          <button class="btn btn-secondary btn-sm" onclick="viewEntry('${e.id}')">Afficher</button>
+          <button class="btn btn-secondary btn-sm" onclick="editEntry('${e.id}')">Modifier</button>
+          <button class="btn btn-danger btn-sm"    onclick="deleteEntry('${e.id}')">Supprimer</button>
         </div>
       </div>
     `;
@@ -126,16 +144,37 @@ const JournalModule = {
 
   // ── SHEET : OUVRIR / FERMER ──────────────
 
-  openSheet() {
-    _form = _emptyForm();
+  openSheet(entry = null) {
+    _editId = entry ? entry.id : null;
+    _form   = entry ? {
+      type:    entry.type,
+      unit:    entry.unit,
+      notions: [...(entry.notions || [])],
+      vocab:   [...(entry.vocab   || [])],
+      notes:   entry.notes || '',
+      photos:  [...(entry.photos  || [])],
+      date:    entry.date,
+    } : _emptyForm();
     this._renderForm();
+    document.getElementById('journal-sheet-title').textContent =
+      entry ? '✏️ Modifier la séance' : '📖 Nouvelle séance';
+    document.getElementById('journal-save-btn').textContent =
+      entry ? 'Enregistrer les modifications' : 'Enregistrer la séance';
     document.getElementById('journal-overlay').classList.add('open');
     document.getElementById('journal-sheet').classList.add('open');
+    document.getElementById('journal-sheet').scrollTop = 0;
+  },
+
+  editEntry(id) {
+    const entry = (State.get('entries') || []).find(e => e.id === id);
+    if (!entry) return;
+    this.openSheet(entry);
   },
 
   closeSheet() {
     document.getElementById('journal-overlay').classList.remove('open');
     document.getElementById('journal-sheet').classList.remove('open');
+    _editId = null;
   },
 
   // ── SHEET : RENDU DU FORMULAIRE ──────────
@@ -157,7 +196,11 @@ const JournalModule = {
     this._renderVocabChips();
 
     // Notes
-    document.getElementById('form-notes').value = '';
+    document.getElementById('form-notes').value = _form.notes || '';
+
+    // Notion input field reset
+    const notionInput = document.getElementById('notion-input');
+    if (notionInput) notionInput.value = '';
 
     // Photos
     this._renderPhotoPreviews();
@@ -216,13 +259,24 @@ const JournalModule = {
 
     if (themes.length === 0 && _form.type === 'manuel') {
       el.innerHTML = `<span style="font-size:11px;color:var(--muted)">Sélectionne une unité pour voir les thèmes suggérés</span>`;
-      return;
+    } else {
+      el.innerHTML = themes.map(t => `
+        <span class="tag ${_form.notions.includes(t) ? 'selected' : ''}"
+              onclick="toggleNotion(this, '${t}')">${t}</span>
+      `).join('');
     }
 
-    el.innerHTML = themes.map(t => `
-      <span class="tag ${_form.notions.includes(t) ? 'selected' : ''}"
-            onclick="toggleNotion(this, '${t}')">${t}</span>
-    `).join('');
+    // Ajouter les notions libres (non présentes dans les thèmes de l'unité)
+    _form.notions.filter(n => !themes.includes(n)).forEach(n => {
+      const tag = document.createElement('span');
+      tag.className = 'tag selected';
+      tag.textContent = n;
+      tag.onclick = () => {
+        _form.notions = _form.notions.filter(x => x !== n);
+        tag.remove();
+      };
+      el.appendChild(tag);
+    });
   },
 
   toggleNotion(el, notion) {
@@ -300,11 +354,22 @@ const JournalModule = {
 
   // ── PHOTOS ───────────────────────────────
 
-  _pickPhoto() {
+  _showPhotoPicker() {
+    document.getElementById('photo-picker-overlay').classList.add('open');
+    document.getElementById('photo-picker-sheet').classList.add('open');
+  },
+
+  _closePhotoPicker() {
+    document.getElementById('photo-picker-overlay').classList.remove('open');
+    document.getElementById('photo-picker-sheet').classList.remove('open');
+  },
+
+  _pickPhoto(useCamera) {
+    this._closePhotoPicker();
     const input = document.createElement('input');
-    input.type  = 'file';
+    input.type   = 'file';
     input.accept = 'image/*';
-    input.capture = 'environment'; // caméra arrière sur mobile
+    if (useCamera) input.capture = 'environment';
     input.onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -347,8 +412,8 @@ const JournalModule = {
       window.toast('⚠️ Ajoute au moins une notion'); return;
     }
 
-    const entry = {
-      id:        Date.now().toString(),
+    const updated = {
+      id:        _editId || Date.now().toString(),
       date,
       type:      _form.type,
       unit:      _form.unit,
@@ -356,18 +421,78 @@ const JournalModule = {
       vocab:     [..._form.vocab],
       notes,
       photos:    [..._form.photos],
-      createdAt: new Date().toISOString(),
+      createdAt: _editId
+        ? ((State.get('entries') || []).find(e => e.id === _editId)?.createdAt || new Date().toISOString())
+        : new Date().toISOString(),
     };
 
-    const entries = State.get('entries') || [];
-    entries.push(entry);
+    let entries = State.get('entries') || [];
+    if (_editId) {
+      entries = entries.map(e => e.id === _editId ? updated : e);
+    } else {
+      entries.push(updated);
+    }
     State.set('entries', entries);
     Storage.save();
 
     this.closeSheet();
     this.renderList();
     window.refreshHeader();
-    window.toast('✓ Séance enregistrée !');
+    window.toast(_editId ? '✓ Séance modifiée !' : '✓ Séance enregistrée !');
+  },
+
+  // ── VUE DÉTAIL ───────────────────────────
+
+  viewEntry(id) {
+    const e = (State.get('entries') || []).find(e => e.id === id);
+    if (!e) return;
+    const isManuel = e.type === 'manuel';
+    const badge = isManuel
+      ? `<span class="badge badge-olive">Unité ${e.unit}</span>`
+      : `<span class="badge badge-gold">Hors manuel</span>`;
+
+    const notions = (e.notions || []).map(n => `<span class="notion-chip">${n}</span>`).join('');
+
+    const vocab = e.vocab?.length ? `
+      <div class="form-group">
+        <div class="form-label">📚 Vocabulaire</div>
+        <div class="vocab-list">
+          ${e.vocab.map(v => `<div class="vocab-item"><span class="pt">${v.pt}</span><span class="fr"> — ${v.fr}</span></div>`).join('')}
+        </div>
+      </div>` : '';
+
+    const photos = e.photos?.length ? `
+      <div class="form-group">
+        <div class="form-label">📷 Photos (${e.photos.length})</div>
+        <div class="detail-photos">
+          ${e.photos.map(b64 => `<img class="detail-photo" src="${b64}">`).join('')}
+        </div>
+      </div>` : '';
+
+    const notes = e.notes ? `
+      <div class="form-group">
+        <div class="form-label">Notes</div>
+        <div class="entry-note" style="border:none;padding:0">${e.notes}</div>
+      </div>` : '';
+
+    document.getElementById('detail-content').innerHTML = `
+      <div style="margin-bottom:12px">
+        <span class="entry-date">${_formatDate(e.date)}</span> ${badge}
+      </div>
+      <div class="form-group">
+        <div class="form-label">Notions abordées</div>
+        <div class="tags" style="margin-top:4px">${notions}</div>
+      </div>
+      ${vocab}${photos}${notes}
+    `;
+    document.getElementById('detail-overlay').classList.add('open');
+    document.getElementById('detail-sheet').classList.add('open');
+    document.getElementById('detail-sheet').scrollTop = 0;
+  },
+
+  _closeDetailSheet() {
+    document.getElementById('detail-overlay').classList.remove('open');
+    document.getElementById('detail-sheet').classList.remove('open');
   },
 
   // ── SUPPRESSION ──────────────────────────
